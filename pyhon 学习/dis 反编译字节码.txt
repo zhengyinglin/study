@@ -1,0 +1,60 @@
+﻿#coding=utf-8
+dis — Disassembler for Python bytecode
+
+
+Type "help", "copyright", "credits" or "license" for more
+>>> def myfunc(alist):
+...     return len(alist)
+...
+>>>
+>>> import dis
+>>> dis.dis(myfunc)
+  2           0 LOAD_GLOBAL              0 (len)
+              3 LOAD_FAST                0 (alist)
+              6 CALL_FUNCTION            1
+              9 RETURN_VALUE
+>>>
+
+
+而对于文件的字节码，我们可以先读取然后编译。
+test.py
+def say_hello():
+    print 'Hello, ET'
+==============================
+s = open('test.py').read() 
+co = compile(s, 'file test.py', 'exec')
+dis.dis(co)
+
+  1           0 LOAD_CONST               0 (code object say_hello at 0x9a2bb0, 
+                                             file "file test.py", line 1)
+              3 MAKE_FUNCTION            0
+              6 STORE_NAME               0 (say_hello)
+ 
+  4           9 LOAD_NAME                0 (say_hello)
+             12 CALL_FUNCTION            0
+             15 POP_TOP             
+             16 LOAD_CONST               1 (None)
+             19 RETURN_VALUE
+其中，dis的输出为：
+行号   字节码偏移量     字节码指令        指令参数    对于参数的相关说明
+   1       0            LOAD_CONST        1            ('Hello, ET')
+
+
+
+二.  Python 程序执行过程
+ 
+2.1 字节码编译
+
+pyc文件就是编译过的py源文件
+
+Python 这样保存字节码是作为一种启动速度的优化。 在下一次运行程序时，如果在上次保存字节码之后没有修改过源代码，Python将会加载pyc 文件，并跳过编译这个步骤。 当pyhon 必须重新编译时，它会自动检查源文件的时间戳，如果又保存了源代码，下次程序运行时，字节码将自动重新创建。
+
+
+2.2  Python 虚拟机（PVM）
+     一旦程序编译成字节码或者字节码从已经存在的pyc 文件中载入，之后的字节码被发送到称为Python虚拟机（Python Virtual Machine）上来执行。 PVM 就是迭代运行字节码指令的一个大循环，一个接一个地完成操作。 PVM 是Python 的运行引擎，它时常表现为Python系统的一部分，并且它是实际运行脚本的组件。 这步操作也就是Python 解释器的最后步骤。
+
+
+
+所以一般的python 内部运行原理可以是：
+
+你写的x.py(源代码)-(通过内部的程序翻译成)>x.pyc(字节码)->(python虚拟机,运行)。

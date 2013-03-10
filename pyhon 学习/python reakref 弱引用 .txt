@@ -1,0 +1,88 @@
+﻿#coding=utf-8
+
+python weakref(弱引用)
+
+  引用一个对象但不增加它的引用计数器。(主要为了大数据的cache或mapping)
+A primary use for weak references is to implement caches or mappings holding large objects, where it’s desired that a large object not be kept alive solely because it appears in a cache or mapping.
+
+if the referent is no longer alive, calling the reference object will cause None to be returned. 
+
+Weak references to an object are cleared before the object’s __del__() is called,
+
+
+python有2个类可以使用The WeakKeyDictionary and WeakValueDictionary classes 
+
+key弱引用
+class weakref.WeakKeyDictionary([dict]) 
+Mapping class that references keys weakly. Entries in the dictionary will be discarded when there is no longer a strong reference to the key. 
+
+value弱引用
+class weakref.WeakValueDictionary([dict]) 
+Mapping class that references values weakly. Entries in the dictionary will be discarded when no strong reference to the value exists any more.
+
+
+2个常用方法：
+class weakref.ref(object[, callback]) 
+      返回一个对象的弱引用. 获取原始对象可以通过调这个弱引用来获取。 
+weakref.proxy(object[, callback]) 
+      返回弱引用的代理，他和使用上面方法的区别就是不需要()，可以像原对象一样访问原对象的属性。
+
+文档例子
+>>> import weakref
+>>> class Object:
+...     pass
+...
+>>> o = Object()
+>>> r = weakref.ref(o) #对象o的一个弱引用
+>>> o2 = r()  #获取对象o
+>>> o is o2  # 同个对象
+True
+>>> del o , o2  #删除掉对象，弱引用讲不存在
+>>> r  
+<weakref at 00BC2B40; dead>
+>>> print r() # 不存在，放回None 
+None
+>>>
+有回调的
+>>> def cb(reference):
+...    print 'in callback func'
+...    print reference , '----' , type(reference)
+...
+>>> o = Object()
+>>> r2 = weakref.ref(o , cb)
+>>> del o
+in callback func
+<weakref at 00BC2B40; dead> ---- <type 'weakref'>
+>>>
+
+
+弱引用代理
+>>> o = Object()
+>>> o.a=100
+>>> x = weakref.proxy(o)
+>>> x.a
+100
+>>> del o
+>>> x
+<weakproxy at 00BC2B70 to NoneType at 1E1D9824>
+>>> x.a  #抛出ReferenceError 异常
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ReferenceError: weakly-referenced object no longer exists
+>>>
+>>> try:
+...   x.a
+... except ReferenceError , e:
+...   print e
+...
+weakly-referenced object no longer exists
+>>>
+
+
+
+
+
+
+
+
+http://sleepd.blog.51cto.com/3034090/1073044

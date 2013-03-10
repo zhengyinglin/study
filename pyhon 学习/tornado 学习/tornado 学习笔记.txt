@@ -1,0 +1,131 @@
+﻿#coding=utf-8
+
+基于版本1.0
+
+tornado.options
+    from tornado.options import define, options
+    define("port", default=8888, help="run on the given port", type=int)
+
+    tornado.options.parse_command_line()
+    application = tornado.web.Application([
+        (r"/", MainHandler),
+    ])
+    http_server = tornado.httpserver.HTTPServer(application)
+    http_server.listen(options.port)
+    tornado.ioloop.IOLoop.instance().start()
+
+=============hello world 解析==================
+
+#用来存储_Option对象
+有个全局的options = _Options.instance() 
+
+类
+class _Option(object)	
+class _Options(dict) 
+函数：define()
+	options[name] = _Option(name, ...) #存储定义对象
+
+函数: parse_command_line(args=None)
+	转换option对象的值
+	name, equals, value = arg.partition("=")
+        option = options[name]
+        option.parse(value)
+
+
+
+tornado.web
+
+application = tornado.web.Application([
+        (r"/", MainHandler),
+    ])
+
+
+类class Application(object):
+def __init__(self, handlers=None, default_host="", transforms=None,
+                 wsgi=False, **settings)
+self.handlers = []
+for spec in handlers:
+    pattern , handler ,kwargs = spec
+    spec = URLSpec(pattern, handler, kwargs)
+    handlers.append(spec)
+self.handlers.append((re.compile(".*$"), handlers))
+
+
+
+
+tornado.httpserver
+class HTTPServer(object)
+def __init__(self, request_callback, no_keep_alive=False, io_loop=None,
+                 xheaders=False, ssl_options=None):
+
+def listen(self, port, address=""):
+    self.bind(port, address)
+    self.start(1)
+
+def start(self, num_processes=1):
+    if not self.io_loop:
+       self.io_loop = ioloop.IOLoop.instance()
+    self.io_loop.add_handler(self._socket.fileno(),
+                             self._handle_events,
+                             ioloop.IOLoop.READ)
+
+def _handle_events(self, fd, events):
+    while True:
+        connection, address = self._socket.accept()
+        stream = iostream.IOStream(connection, io_loop=self.io_loop)
+        HTTPConnection(stream, address, self.request_callback,
+                       self.no_keep_alive, self.xheaders)
+       
+
+
+
+tornado.ioloop
+
+class IOLoop(object):
+def __init__(self, impl=None):
+        self._impl = impl or _poll() #class _EPoll(object)
+        self._handlers = {}
+        # Create a pipe that we send bogus data to when we want to wake
+        # the I/O loop when it is idle
+        r, w = os.pipe()
+        self._waker_reader = os.fdopen(r, "r", 0)
+        self._waker_writer = os.fdopen(w, "w", 0)
+        self.add_handler(r, self._read_waker, self.READ)
+
+def add_handler(self, fd, handler, events):
+    """Registers the given handler to receive the given events for fd."""
+    self._handlers[fd] = handler
+    self._impl.register(fd, events | self.ERROR)
+
+#处理回调
+#处理定时器
+#处理epoll
+def start(self):
+	while True:
+            poll_timeout = 0.2
+            callbacks = list(self._callbacks)
+            for callback in callbacks:
+                if callback in self._callbacks:
+                    self._callbacks.remove(callback)
+                    self._run_callback(callback)
+            if self._callbacks:
+                poll_timeout = 0.0
+            if self._timeouts:
+                now = time.time()
+                while self._timeouts and self._timeouts[0].deadline <= now:
+                    timeout = self._timeouts.pop(0)
+                    self._run_callback(timeout.callback)
+                if self._timeouts:
+                    milliseconds = self._timeouts[0].deadline - now
+                    poll_timeout = min(milliseconds, poll_timeout)
+
+            event_pairs = self._impl.poll(poll_timeout)     
+            # Pop one fd at a time from the set of pending fds and run
+            # its handler. Since that handler may perform actions on
+            # other file descriptors, there may be reentrant calls to
+            # this IOLoop that update self._events
+            self._events.update(event_pairs)
+            while self._events:
+                fd, events = self._events.popitem()
+                self._handlers[fd](fd, events)
+    

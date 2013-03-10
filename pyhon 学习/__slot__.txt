@@ -1,0 +1,42 @@
+﻿#coding=utf-8
+
+__slots__
+● Optimisation trick
+● Python objects store attributes in a dictionary
+● __slots__ is a fixed list
+● reduces memory consumption when you have many small objects
+=====
+● Don't use __slots__ as some sort of type-checking hack
+● __slots__ and subclassing == hurt
+当继承一个类(without __slots__), __dict__ 可以被访问, 所以__slots__ 定义是没有用的在子类
+
+
+
+python __slots__介绍：
+
+默认python 类有一个存属性的字典__dict__，如果想节省内存开销，可以重写__slots__属性(只有new-style class 有效，有了这个属性，就不会创建__dict__, 也没有__weakref__);__slots__仅仅使用一个列表存储已经声明好的变量名称，改类不能添加任何其他属性了。
+
+>>> class Foo(object):
+...     pass
+...
+>>> f = Foo()
+>>> f.a=100
+>>> f.__dict__
+{'a': 100}
+>>>
+>>> class Boo(object):
+...    __slots__ = ['a','b']  #类Boo 只能有2个属性a 和 b, 不能添加其他属性
+...
+>>> b = Boo()
+>>> b.__dict__
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+AttributeError: 'Boo' object has no attribute '__dict__'
+>>> b.c = 100
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+AttributeError: 'Boo' object has no attribute 'c'
+>>> b.a = 100
+>>> b.a
+100
+
