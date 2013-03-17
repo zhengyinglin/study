@@ -14,7 +14,7 @@ __slots__
 
 python __slots__介绍：
 
-默认python 类有一个存属性的字典__dict__，如果想节省内存开销，可以重写__slots__属性(只有new-style class 有效，有了这个属性，就不会创建__dict__, 也没有__weakref__);__slots__仅仅使用一个列表存储已经声明好的变量名称，改类不能添加任何其他属性了。
+默认python 类有一个存属性的字典__dict__，如果想节省内存开销，可以重写__slots__属性(只有new-style class 有效，有了这个属性，就不会创建__dict__, 也没有__weakref__);__slots__仅仅使用一个列表存储已经声明好的变量名称，该类不能添加任何其他属性了。
 
 >>> class Foo(object):
 ...     pass

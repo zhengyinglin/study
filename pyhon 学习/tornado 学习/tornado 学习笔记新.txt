@@ -1,0 +1,416 @@
+﻿#coding=utf-8
+基于版本2.4.1
+注：以下代码有删减，具体见源代码
+
+
+A simple example server that echoes back the URI you  requested::
+
+        import httpserver
+        import ioloop
+
+        def handle_request(request):
+           message = "You requested %s\n" % request.uri
+           request.write("HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n%s" % (
+                         len(message), message))
+           request.finish()
+
+        http_server = httpserver.HTTPServer(handle_request)
+        http_server.listen(8888)
+        ioloop.IOLoop.instance().start()
+
+
+HTTPServer 构造的时候传入 一个 回调callback，然后HTTPServer 会回调该函数，并传人一个request(HTTPRequest 实例)作为参数 即 callback(request)
+
+看一下具体实现  
+
+tornado/httpserver.py
+class HTTPServer(TCPServer):
+    def __init__(self, request_callback, no_keep_alive=False, io_loop=None,
+                 xheaders=False, ssl_options=None, **kwargs):
+        self.request_callback = request_callback
+        self.no_keep_alive = no_keep_alive
+        self.xheaders = xheaders
+        TCPServer.__init__(self, io_loop=io_loop, ssl_options=ssl_options,
+                           **kwargs)
+    #连接的具体处理
+    def handle_stream(self, stream, address):
+        HTTPConnection(stream, address, self.request_callback,
+                       self.no_keep_alive, self.xheaders)
+
+大部分功能实现在TCPServer里面
+tornado/netutil.py
+class TCPServer(object):
+    def __init__(self, io_loop=None, ssl_options=None):
+	初始化参数，然后什么都没干
+
+    def listen(self, port, address=""):
+        sockets = bind_sockets(port, address=address)  # 返回绑定好的 socks []
+        self.add_sockets(sockets)
+
+    def add_sockets(self, sockets):
+        if self.io_loop is None:
+            self.io_loop = IOLoop.instance()
+        for sock in sockets:
+            self._sockets[sock.fileno()] = sock
+            add_accept_handler(sock, self._handle_connection,
+                               io_loop=self.io_loop)
+
+    def _handle_connection(self, connection, address):
+        ......
+            if self.ssl_options is not None:
+                stream = SSLIOStream(connection, io_loop=self.io_loop)
+            else:
+                stream = IOStream(connection, io_loop=self.io_loop)
+            self.handle_stream(stream, address)   #需要子类实现
+	......
+
+
+向IOLoop注册Read事件，调用回调 accept_handler ， accept_handler 在调用callback
+def add_accept_handler(sock, callback, io_loop=None):
+    if io_loop is None:
+        io_loop = IOLoop.instance()
+    def accept_handler(fd, events):
+        while True:
+            try:
+                connection, address = sock.accept()
+            except socket.error, e:
+                if e.args[0] in (errno.EWOULDBLOCK, errno.EAGAIN):
+                    return
+                raise
+            callback(connection, address)
+    io_loop.add_handler(sock.fileno(), accept_handler, IOLoop.READ)
+
+
+回过头看上面的例子，
+首先构造 HTTPServer 对象（传人回调函数），然后调用listen 函数，
+具体流程
+listen ==> bind_sockets（ 创建和绑定socket ） --> 向ioloop 添加（注册）READ事件的回调函数accept_handler
+每次回调函数accept_handler ==》接受新连接请求sock.accept() ，接着回调TCPServer._handle_connection-->这个函数又创建IOStream（封装异步socket），然后调用HTTPServer.handle_stream ---》调用HTTPConnection处理具体的http连接请求
+
+
+下面看HTTPConnection具体实现
+tornado/httpserver.py
+#解析http请求：head + body 和执行回调
+class HTTPConnection(object):
+    def __init__(self, stream, address, request_callback, no_keep_alive=False,
+                 xheaders=False): 
+	....
+	self._header_callback = stack_context.wrap(self._on_headers)
+        self.stream.read_until(b("\r\n\r\n"), self._header_callback)#解析head
+	....
+    #
+    def _on_headers(self, data):
+        eol = data.find("\r\n")
+        start_line = data[:eol]
+        method, uri, version = start_line.split(" ")
+        headers = httputil.HTTPHeaders.parse(data[eol:]) # 解析请求head
+	#生成http请求对象
+        self._request = HTTPRequest(
+                connection=self, method=method, uri=uri, version=version,
+                headers=headers, remote_ip=remote_ip)
+        content_length = headers.get("Content-Length")
+        if content_length:
+           content_length = int(content_length)
+           self.stream.read_bytes(content_length, self._on_request_body)
+           return
+        self.request_callback(self._request)
+	
+    def _on_request_body(self, data):
+        self._request.body = data
+        if self._request.method in ("POST", "PATCH", "PUT"):
+            #parses a form request body.
+            httputil.parse_body_arguments(
+                self._request.headers.get("Content-Type", ""), data,
+                self._request.arguments, self._request.files)
+        self.request_callback(self._request)
+
+    def write(self, chunk, callback=None):
+        """Writes a chunk of output to the stream."""
+        assert self._request, "Request closed"
+        if not self.stream.closed():
+            self._write_callback = stack_context.wrap(callback)
+            self.stream.write(chunk, self._on_write_complete)
+
+   def _on_write_complete(self):
+        if self._write_callback is not None:
+            callback = self._write_callback
+            self._write_callback = None
+            callback()
+        # _on_write_complete is enqueued on the IOLoop whenever the
+        # IOStream's write buffer becomes empty, but it's possible for
+        # another callback that runs on the IOLoop before it to
+        # simultaneously write more data and finish the request.  If
+        # there is still data in the IOStream, a future
+        # _on_write_complete will be responsible for calling
+        # _finish_request.
+        if self._request_finished and not self.stream.writing():
+            self._finish_request()
+
+    def _finish_request(self):
+        if self.no_keep_alive:
+            disconnect = True
+        else:
+            connection_header = self._request.headers.get("Connection")
+            if connection_header is not None:
+                connection_header = connection_header.lower()
+            if self._request.supports_http_1_1():
+                disconnect = connection_header == "close"
+            elif ("Content-Length" in self._request.headers
+                    or self._request.method in ("HEAD", "GET")):
+                disconnect = connection_header != "keep-alive"
+            else:
+                disconnect = True
+        self._request = None
+        self._request_finished = False
+        if disconnect:
+            self.close()
+            return
+        self.stream.read_until(b("\r\n\r\n"), self._header_callback)
+
+    def close(self):
+        self.stream.close()
+        # Remove this reference to self, which would otherwise cause a
+        # cycle and delay garbage collection of this connection.
+        self._header_callback = None
+
+
+
+通过一系列的回调_on_headers --》 _on_request_body   ，最后调用self.request_callback(self._request)  
+
+
+
+=======上面例子的最终处理流程
+handle_request  传给     http_server = httpserver.HTTPServer(handle_request)
+httpsvr  开始监听端口   http_server.listen(8888)
+			创建和绑定socket，向ioloop 添加（注册）READ事件的回调函数accept_handler
+                        每次回调函数accept_handler ，接受新连接请求sock.accept() ，创建IOStream（封装异步socket），调用HTTPConnection接收获取具体的request = HTTPRequest()。最后调用handle_request(request) 
+
+client <--> IOLoop <--> httpserver.HTTPServer <--> IOStream <--> HTTPConnection <--> HTTPRequest <-->  handle_request  
+ 
+
+
+
+class HTTPRequest(object):
+    def __init__(self, method, uri, version="HTTP/1.0", headers=None,
+                 body=None, remote_ip=None, protocol=None, host=None,
+                 files=None, connection=None):
+        ....
+    def write(self, chunk, callback=None):
+        """Writes the given chunk to the response stream."""
+        assert isinstance(chunk, bytes_type)
+        self.connection.write(chunk, callback=callback)
+
+    def finish(self):
+        """Finishes this HTTP request on the open connection."""
+        self.connection.finish()
+        self._finish_time = time.time()
+
+
+
+==================IOStream
+tornado/iostream.py
+
+class IOStream(object):
+    def __init__(self, socket, io_loop=None, max_buffer_size=104857600,
+                 read_chunk_size=4096):
+        self._read_buffer = collections.deque()
+        self._write_buffer = collections.deque()
+
+    def _add_io_state(self, state):
+       if self.socket is None:
+            # connection has been closed, so there can be no future events
+            return
+        if self._state is None:
+            self._state = ioloop.IOLoop.ERROR | state
+            with stack_context.NullContext():
+                self.io_loop.add_handler(
+                    self.socket.fileno(), self._handle_events, self._state)
+        elif not self._state & state:
+            self._state = self._state | state
+            self.io_loop.update_handler(self.socket.fileno(), self._state)
+
+    def _handle_events(self, fd, events):
+        if not self.socket:
+            logging.warning("Got events for closed stream %d", fd)
+            return
+        try:
+            if events & self.io_loop.READ:
+                self._handle_read()
+            if not self.socket:
+                return
+            if events & self.io_loop.WRITE:
+                if self._connecting:
+                    self._handle_connect()
+                self._handle_write()
+            if not self.socket:
+                return
+            if events & self.io_loop.ERROR:
+                errno = self.socket.getsockopt(socket.SOL_SOCKET,
+                                               socket.SO_ERROR)
+                self.error = socket.error(errno, os.strerror(errno))
+                # We may have queued up a user callback in _handle_read or
+                # _handle_write, so don't close the IOStream until those
+                # callbacks have had a chance to run.
+                self.io_loop.add_callback(self.close)
+                return
+            state = self.io_loop.ERROR
+            if self.reading():
+                state |= self.io_loop.READ
+            if self.writing():
+                state |= self.io_loop.WRITE
+            if state == self.io_loop.ERROR:
+                state |= self.io_loop.READ
+            if state != self._state:
+                assert self._state is not None, \
+                    "shouldn't happen: _handle_events without self._state"
+                self._state = state
+                self.io_loop.update_handler(self.socket.fileno(), self._state)
+        except Exception:
+            logging.error("Uncaught exception, closing connection.",
+                          exc_info=True)
+            self.close()
+            raise
+
+    def _handle_read(self):
+        try:
+            try:
+                # Pretend to have a pending callback so that an EOF in
+                # _read_to_buffer doesn't trigger an immediate close
+                # callback.  At the end of this method we'll either
+                # estabilsh a real pending callback via
+                # _read_from_buffer or run the close callback.
+                #
+                # We need two try statements here so that
+                # pending_callbacks is decremented before the `except`
+                # clause below (which calls `close` and does need to
+                # trigger the callback)
+                self._pending_callbacks += 1
+                while True:
+                    # Read from the socket until we get EWOULDBLOCK or equivalent.
+                    # SSL sockets do some internal buffering, and if the data is
+                    # sitting in the SSL object's buffer select() and friends
+                    # can't see it; the only way to find out if it's there is to
+                    # try to read it.
+                    if self._read_to_buffer() == 0:
+                        break
+            finally:
+                self._pending_callbacks -= 1
+        except Exception:
+            logging.warning("error on read", exc_info=True)
+            self.close()
+            return
+        if self._read_from_buffer():
+            return
+        else:
+            self._maybe_run_close_callback()
+    def _handle_connect(self):
+        err = self.socket.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
+        if err != 0:
+            self.error = socket.error(err, os.strerror(err))
+            # IOLoop implementations may vary: some of them return
+            # an error state before the socket becomes writable, so
+            # in that case a connection failure would be handled by the
+            # error path in _handle_events instead of here.
+            logging.warning("Connect error on fd %d: %s",
+                            self.socket.fileno(), errno.errorcode[err])
+            self.close()
+            return
+        if self._connect_callback is not None:
+            callback = self._connect_callback
+            self._connect_callback = None
+            self._run_callback(callback)
+        self._connecting = False
+    def _handle_write(self):
+        while self._write_buffer:
+            try:
+                if not self._write_buffer_frozen:
+                    # On windows, socket.send blows up if given a
+                    # write buffer that's too large, instead of just
+                    # returning the number of bytes it was able to
+                    # process.  Therefore we must not call socket.send
+                    # with more than 128KB at a time.
+                    _merge_prefix(self._write_buffer, 128 * 1024)
+                num_bytes = self.socket.send(self._write_buffer[0])
+                if num_bytes == 0:
+                    # With OpenSSL, if we couldn't write the entire buffer,
+                    # the very same string object must be used on the
+                    # next call to send.  Therefore we suppress
+                    # merging the write buffer after an incomplete send.
+                    # A cleaner solution would be to set
+                    # SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER, but this is
+                    # not yet accessible from python
+                    # (http://bugs.python.org/issue8240)
+                    self._write_buffer_frozen = True
+                    break
+                self._write_buffer_frozen = False
+                _merge_prefix(self._write_buffer, num_bytes)
+                self._write_buffer.popleft()
+            except socket.error, e:
+                if e.args[0] in (errno.EWOULDBLOCK, errno.EAGAIN):
+                    self._write_buffer_frozen = True
+                    break
+                else:
+                    logging.warning("Write error on %d: %s",
+                                    self.socket.fileno(), e)
+                    self.close()
+                    return
+        if not self._write_buffer and self._write_callback:
+            callback = self._write_callback
+            self._write_callback = None
+            self._run_callback(callback)
+
+
+
+
+
+
+
+
+
+tornado.options
+    from tornado.options import define, options
+    define("port", default=8888, help="run on the given port", type=int)
+
+    tornado.options.parse_command_line()
+    application = tornado.web.Application([
+        (r"/", MainHandler),
+    ])
+    http_server = tornado.httpserver.HTTPServer(application)
+    http_server.listen(options.port)
+    tornado.ioloop.IOLoop.instance().start()
+
+=============hello world 解析==================
+
+#用来存储_Option对象
+有个全局的options = _Options.instance() 
+
+类
+class _Option(object)	
+class _Options(dict) 
+函数：define()
+	options[name] = _Option(name, ...) #存储定义对象
+
+函数: parse_command_line(args=None)
+	转换option对象的值
+	name, equals, value = arg.partition("=")
+        option = options[name]
+        option.parse(value)
+
+
+
+tornado.web
+
+application = tornado.web.Application([
+        (r"/", MainHandler),
+    ])
+
+
+类class Application(object):
+def __init__(self, handlers=None, default_host="", transforms=None,
+                 wsgi=False, **settings)
+self.handlers = []
+for spec in handlers:
+    pattern , handler ,kwargs = spec
+    spec = URLSpec(pattern, handler, kwargs)
+    handlers.append(spec)
+self.handlers.append((re.compile(".*$"), handlers))
