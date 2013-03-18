@@ -2,8 +2,8 @@
 基于版本2.4.1
 注：以下代码有删减，具体见源代码
 
-=============================IOLoop
-	主循环
+=============================IOLoop  主循环
+	
 	文档例子  Example usage for a simple TCP server::
 
         def connection_ready(sock, fd, events):
@@ -15,7 +15,7 @@
                         raise
                     return
                 connection.setblocking(0)
-                handle_connection(connection, address)
+                handle_connection(connection, address)  #handle_connection 实现忽略
 	#创建socket
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -31,22 +31,31 @@
         io_loop.start()
 
 
-ioloop 主循环
+ioloop 主循环逻辑
 	1、处理回调
 	2、处理定时器
 	3、处理epoll
-对外提供的接口：添加回调、定时器、socket 事件处理等
 
+主要对外提供的接口：
+	1、socketIO 事件处理等
+		add_handler(self, fd, handler, events):
+    		update_handler(self, fd, events):
+    		remove_handler(self, fd):
+	2、添加回调
+		add_callback(self, callback):
+	3、定时器
+		add_timeout(self, deadline, callback):
+        	remove_timeout(self, timeout): #timeout 是一个类
+
+实现代码
 tornado/ioloop.py
 
 ioloop实现 优先顺序 epoll 、 kqueue 、 select
 
 if hasattr(select, "epoll"):
-    # Python 2.6+ on Linux
-    _poll = select.epoll
+    _poll = select.epoll  # Python 2.6+ on Linux
 elif hasattr(select, "kqueue"):
-    # Python 2.6+ on BSD or Mac
-    _poll = _KQueue
+    _poll = _KQueue  # Python 2.6+ on BSD or Mac
 else:
     try:
         from tornado import epoll
@@ -67,7 +76,7 @@ class IOLoop(object):
         if hasattr(self._impl, 'fileno'):
             set_close_exec(self._impl.fileno())
         self._handlers = {} # socket 处理  fd<-->handler
-        self._events = {}
+        self._events = {}  # fd <--> event (io read , write , error ... )
         self._callbacks = [] # 回调函数
         self._callback_lock = threading.Lock()
         self._timeouts = []    #定时器 堆实现
@@ -81,7 +90,7 @@ class IOLoop(object):
         self.add_handler(self._waker.fileno(),
                          lambda fd, events: self._waker.consume(),
                          self.READ)
-    #socket事件处理
+    #socket事件处理  添加、修改、删除
     def add_handler(self, fd, handler, events):
         """Registers the given handler to receive the given events for fd."""
         self._handlers[fd] = stack_context.wrap(handler)
@@ -108,6 +117,7 @@ class IOLoop(object):
 
     def remove_timeout(self, timeout):
         timeout.callback = None
+
     #添加回调
     def add_callback(self, callback):
         """线程安全"""
