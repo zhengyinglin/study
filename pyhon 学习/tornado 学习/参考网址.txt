@@ -1,0 +1,5 @@
+深入理解Tornado——一个异步web服务器
+http://www.cnblogs.com/yiwenshengmei/archive/2011/06/08/understanding_tornado.html
+
+Tornado源码分析之http服务器篇
+http://kenby.iteye.com/blog/1159621
