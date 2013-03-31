@@ -1,0 +1,52 @@
+﻿#coding=utf-8
+
+带有 yield 的函数在 Python 中被称之为 生成器（generator）
+含有yield语句的函数都是可重入的函数，它能记住上一次返回时在函数体中的位置及信息。
+
+
+yield 的作用就是把一个函数变成一个 generator，
+带有 yield 的函数不再是一个普通函数，
+Python 解释器会将其视为一个 generator（生成器对象）
+
+
+>>> def fun():
+...   print 'start run ...'
+...   val = yield 10
+...   print val
+...   val = yield object()
+...   print val
+...
+>>>
+>>> g = fun()
+>>> g
+<generator object fun at 0x00D2FFD0>
+>>>
+
+generator 有几个常用函数 send  next  throw  close 
+
+send(arg) -> send 'arg' into generator,
+    return next yielded value or raise StopIteration.
+    g.send(arg) 返回下一个yielded value ， arg 当作下一个yielded 语句的返回值
+
+>>> g.send(None)  #第一次要传人None   停在val = yield 10 语句 ，返回yield value -- 10 
+start run ...
+10
+>>> g.send('ha ha') # 传人参数作为  yield 10 的返回值 val = "ha ha" , 停在val = yield object()
+ha ha
+<object object at 0x00AF14C0>
+>>> g.send('he he') # 函数运行完成，抛出StopIteration 表示迭代完成
+he he
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+StopIteration
+>>> g.send('he he')
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+StopIteration
+
+
+next() ==>等价于 send(None)
+throw(..)  抛出例外
+close() --> 结束生成器（抛出 raise GeneratorExit inside generator.）
+
+
