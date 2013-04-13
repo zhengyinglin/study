@@ -3,3 +3,6 @@ http://www.cnblogs.com/yiwenshengmei/archive/2011/06/08/understanding_tornado.ht
 
 Tornado源码分析之http服务器篇
 http://kenby.iteye.com/blog/1159621
+
+
+tornado.uml  using  "staruml"
