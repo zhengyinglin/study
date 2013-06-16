@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Props>
+	<Prop id="2001" name="耐力丸" sell="1" price="100" desc="增加20点耐力值。" />
+	<Prop id="2002" name="中耐力丸" sell="1" price="200" desc="增加50点耐力值。" />
+	<Prop id="2003" name="大耐力丸" sell="1" price="400" desc="增加110点耐力值。" />
+</Props>

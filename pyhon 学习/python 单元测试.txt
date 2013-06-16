@@ -1,0 +1,50 @@
+﻿#coding=utf-8
+
+python 单元测试
+
+代码：
+
+class Test(unittest.TestCase):
+    #开始时调用
+    def setUp(self):
+        print 'set up'
+        self.seq = range(10)
+
+    #退出时调用
+    def tearDown(self):
+        print 'tearDown'
+        pass
+
+    def test_shuffle(self):
+        print 'test_shuffle'
+        random.shuffle(self.seq)
+        self.seq.sort()
+        self.assertEqual(self.seq, range(10))
+        self.assertRaises(TypeError, random.shuffle ,\(1,2,3))
+        
+    def test_choice(self):
+        print 'test_choice'
+        element = random.choice(self.seq)
+        self.assertTrue(element in self.seq)
+        
+if __name__ == "__main__":
+    unittest.main()
+
+==================================
+简单用法可以继承unittest.TestCase ，让后调用unittest.main()
+
+他会调用Test 类里面所有testxxx 的方法()
+上面函数调用：
+    setUp()
+    test_shuffle()
+    tearDown()
+
+    setUp()
+    test_choice()
+    tearDown()
+
+
+
+
+
+
