@@ -1,0 +1,76 @@
+﻿#coding=utf-8
+protobuf rpc
+//还没完成。。。
+
+http://code.google.com/p/protobuf/wiki/ThirdPartyAddOns
+
+http://www.codedump.info/?p=169
+
+
+
+=====================接口=======================
+class  Service：
+4个接口：
+	virtual const ServiceDescriptor* GetDescriptor() = 0;
+	virtual void CallMethod(const MethodDescriptor* method,
+                          RpcController* controller,
+                          const Message* request,
+                          Message* response,
+                          Closure* done) = 0;
+	virtual const Message& GetRequestPrototype(
+    const MethodDescriptor* method) const = 0;
+  
+	virtual const Message& GetResponsePrototype(
+    const MethodDescriptor* method) const = 0;
+	
+
+class  RpcController：
+//Client-side methods
+  virtual void Reset() = 0;
+  virtual bool Failed() const = 0;
+  virtual string ErrorText() const = 0;
+  virtual void StartCancel() = 0;
+// Server-side methods
+  virtual void SetFailed(const string& reason) = 0;
+  virtual bool IsCanceled() const = 0;
+  virtual void NotifyOnCancel(Closure* callback) = 0;
+
+
+class  RpcChannel
+就一个接口：
+	virtual void CallMethod(const MethodDescriptor* method,
+                          RpcController* controller,
+  const Message* request,
+
+                          Message* response,
+   Closure* done) = 0;
+
+
+定义这样一个东西：
+service EchoService
+{
+   rpc Echo(EchoRequest) returns (EchoResponse);
+}
+会生出2个类
+
+class  EchoService : public ::google::protobuf::Service
+	会实现Service的4个接口，同时也提供一个新的接口（接口名字和定义一样）：
+	virtual void Echo(::google::protobuf::RpcController* controller,
+                       const ::echo::EchoRequest* request,
+                       ::echo::EchoResponse* response,
+                       ::google::protobuf::Closure* done);
+
+
+
+class  EchoService_Stub : public EchoService 
+	其构造函数需要提供一个RpcChannel类，
+	他实现EchoService 提供的接口Echo，调用RpcChannel类的CallMethod方法
+
+
+
+例子：
+Example:
+
+RpcChannel* channel = new MyRpcChannel("remotehost.example.com:1234");
+MyService* service = new MyService::Stub(channel);
+service->MyMethod(request, &response, callback);

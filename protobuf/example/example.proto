@@ -1,0 +1,30 @@
+
+package myproto;
+
+message EmptyMessage
+{
+}
+
+message UsersSet
+{
+	 repeated uint32   uins = 1;
+	 optional bytes   desc = 2;
+}
+
+message Item
+{
+    required  int32    id = 1;
+    optional  int32    num = 2;
+    optional  bytes    name = 3;
+}
+
+message BagInfo
+{
+	optional  uint32   create_time = 1;
+}
+
+message Bag
+{
+   repeated  Item  items = 1;
+   optional  BagInfo   info =2;
+}
