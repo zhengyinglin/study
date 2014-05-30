@@ -1,0 +1,110 @@
+﻿#coding=utf-8
+
+传说中clang比gcc强，速度快、体检小。。。
+
+clang svn checkout 时间2014-05-28
+	clang version 3.5.0 (trunk)
+	Target: x86_64-unknown-linux-gnu
+	Thread model: posix
+
+
+
+clang gcc 要求4.7+ 这里gcc版本低需要编译高版本gcc
+（下面编译没有安装到系统的）
+
+下面yourpath 对应你编译后install的位置
+
+===============================================
+	GCC 需要的额外依赖
+===============================================
+ftp://gcc.gnu.org/pub/gcc/infrastructure/
+mpc-0.8.1.tar.gz 
+mpfr-2.4.2.tar.bz2
+gmp-4.3.2.tar.bz2
+
+编译依赖
+------------------------------
+cd gmp-4.3.2
+./configure --prefix=yourpath/gmp
+make
+make install
+cd ..
+rm -rf gmp-4.3.2
+
+------------------------------
+cd mpfr-2.4.2
+./configure --prefix=yourpath/mpfr  --with-gmp=yourpath/gmp
+make
+make install
+cd ..
+rm -rf mpfr-2.4.2
+
+------------------------------
+cd  mpc-0.8.1
+./configure --prefix=yourpath/mpc  --with-gmp=yourpath/gmp  --with-mpfr=yourpath/mpfr 
+make
+make install
+cd ..
+rm -rf mpc-0.8.1
+
+========================================================================
+			开始编译gcc（编译时间有点久）	
+========================================================================
+http://gcc.parentingamerica.com/releases/gcc-4.8.3/
+gcc-4.8.3.tar.gz
+
+cd gcc-4.8.3
+
+LD_LIBRARY_PATH=yourpath/mpc/lib:yourpath/mpfr/lib:yourpath/gmp/lib
+export LD_LIBRARY_PATH
+
+./configure --prefix=yourpath/gcc  --with-gmp=yourpath/gmp  --with-mpfr=yourpath/mpfr  --with-mpc=yourpath/mpc 
+make
+make install
+cd ..
+rm -rf gcc-4.8.3
+
+---------------添加路径
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:yourpath/gcc/lib64
+export LD_LIBRARY_PATH
+
+PATH=yourpath/gcc/bin:$PATH
+export PATH
+
+
+测试
+g++ --version
+g++ (GCC) 4.8.3
+Copyright (C) 2013 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+
+
+==========================================================
+                 Clang编译（编译时间有点久）
+==========================================================
+http://clang.llvm.org/get_started.html
+
+
+我是window svn checkup下来的的所以要转一下格式（要不configure是会出错）
+
+cd llvm
+find . -type f | xargs dos2unix
+chmod +x configure autoconf/*
+cd ..
+mkdir build_clang/
+cd build_clang/
+../llvm/configure --prefix=yourpath/clang 
+make
+make install
+
+编译好后的clang 还依赖gcc的2个lib库（可以拷到clang/lib下面）
+
+===========clang 依赖 gcc 2个lib库
+ldd clang/bin/clang
+        libstdc++.so.6
+        libgcc_s.so.1
+
+
+
