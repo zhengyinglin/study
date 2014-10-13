@@ -1,0 +1,258 @@
+--- protobuf-2.6.0/src/google/protobuf/compiler/cpp/cpp_message_field.cc	2014-08-26 03:52:38.000000000 +0800
++++ protobuf-2.6.0-lazy/src/google/protobuf/compiler/cpp/cpp_message_field.cc	2014-09-02 16:23:30.000000000 +0800
+@@ -77,6 +77,12 @@
+ void MessageFieldGenerator::
+ GeneratePrivateMembers(io::Printer* printer) const {
+   printer->Print(variables_, "$type$* $name$_;\n");
++
++  if( descriptor_->options().lazy() )
++  {
++      printer->Print(variables_, "std::string $name$_content_;\n");
++  }
++
+ }
+ 
+ void MessageFieldGenerator::
+@@ -86,10 +92,76 @@
+     "inline $type$* mutable_$name$()$deprecation$;\n"
+     "inline $type$* $release_name$()$deprecation$;\n"
+     "inline void set_allocated_$name$($type$* $name$)$deprecation$;\n");
++    
++  if( descriptor_->options().lazy() )
++  {
++      printer->Print(variables_, 
++          "inline bool is_$name$_parsed() const{return $name$_content_.empty();}\n"
++          "inline void lazy_parse_$name$();$deprecation$\n"
++          "inline void lazy_parse_$name$() const;$deprecation$\n");
++  }
+ }
+ 
+ void MessageFieldGenerator::
+ GenerateInlineAccessorDefinitions(io::Printer* printer) const {
++
++  if( descriptor_->options().lazy() )
++  {
++      printer->Print(variables_,
++          "inline const $type$& $classname$::$name$() const {\n"
++          "  // @@protoc_insertion_point(field_get:$full_name$)\n"
++          "  lazy_parse_$name$();\n");
++      
++      PrintHandlingOptionalStaticInitializers(
++          variables_, descriptor_->file(), printer,
++          // With static initializers.
++          "  return $name$_ != NULL ? *$name$_ : *default_instance_->$name$_;\n",
++          // Without.
++          "  return $name$_ != NULL ? *$name$_ : *default_instance().$name$_;\n");
++      
++      printer->Print(variables_,
++          "}\n"
++          "inline $type$* $classname$::mutable_$name$() {\n"
++          "  set_has_$name$();\n"
++          "  if ($name$_ == NULL) $name$_ = new $type$;\n"
++          "  // @@protoc_insertion_point(field_mutable:$full_name$)\n"
++          "  lazy_parse_$name$();\n"
++          "  return $name$_;\n"
++          "}\n"
++          "inline $type$* $classname$::$release_name$() {\n"
++          "  clear_has_$name$();\n"
++          "  $type$* temp = $name$_;\n"
++          "  $name$_ = NULL;\n"
++          "  $name$_content_.clear();\n"
++          "  return temp;\n"
++          "}\n"
++          "inline void $classname$::set_allocated_$name$($type$* $name$) {\n"
++          "  delete $name$_;\n"
++          "  $name$_content_.clear();\n"
++          "  $name$_ = $name$;\n"
++          "  if ($name$) {\n"
++          "    set_has_$name$();\n"
++          "  } else {\n"
++          "    clear_has_$name$();\n"
++          "  }\n"
++          "  // @@protoc_insertion_point(field_set_allocated:$full_name$)\n"
++          "}\n");
++
++        printer->Print(variables_,
++            "inline void $classname$::lazy_parse_$name$(){\n"
++            "  if (!is_$name$_parsed()){\n"
++            "    if ($name$_ == NULL) $name$_ = new $type$;\n"
++            "    $name$_->ParsePartialFromString($name$_content_);\n"
++            "    $name$_content_.clear();\n"
++            "  }\n"
++            "}\n"
++            "inline void $classname$::lazy_parse_$name$() const{\n"
++            "  const_cast<$classname$*>(this)->lazy_parse_$name$();\n"
++            "}\n"
++            );
++     return ;
++  }
++
+   printer->Print(variables_,
+     "inline const $type$& $classname$::$name$() const {\n"
+     "  // @@protoc_insertion_point(field_get:$full_name$)\n");
+@@ -131,30 +203,65 @@
+ GenerateClearingCode(io::Printer* printer) const {
+   printer->Print(variables_,
+     "if ($name$_ != NULL) $name$_->$type$::Clear();\n");
++
++  if (descriptor_->options().lazy())
++  {
++      printer->Print(variables_,
++          "$name$_content_.clear();\n");
++  }
+ }
+ 
+ void MessageFieldGenerator::
+ GenerateMergingCode(io::Printer* printer) const {
+-  printer->Print(variables_,
+-    "mutable_$name$()->$type$::MergeFrom(from.$name$());\n");
++    if (descriptor_->options().lazy())
++    {
++        printer->Print(variables_,
++            "$name$_content_.clear();\n");
++    }
++   
++    printer->Print(variables_,
++       "mutable_$name$()->$type$::MergeFrom(from.$name$());\n");
++
+ }
+ 
+ void MessageFieldGenerator::
+ GenerateSwappingCode(io::Printer* printer) const {
+-  printer->Print(variables_, "std::swap($name$_, other->$name$_);\n");
++    if (descriptor_->options().lazy())
++    {
++        printer->Print(variables_,
++            "lazy_parse_$name$();\n"
++            "other->lazy_parse_$name$();\n"
++            "$name$_content_.swap(other->$name$_content_);\n");
++    }
++    
++    printer->Print(variables_, "std::swap($name$_, other->$name$_);\n");
++
+ }
+ 
+ void MessageFieldGenerator::
+ GenerateConstructorCode(io::Printer* printer) const {
+   printer->Print(variables_, "$name$_ = NULL;\n");
++   if (descriptor_->options().lazy())
++   {
++       printer->Print(variables_, "$name$_content_ = \"\";\n");
++   }
+ }
+ 
+ void MessageFieldGenerator::
+ GenerateMergeFromCodedStream(io::Printer* printer) const {
+   if (descriptor_->type() == FieldDescriptor::TYPE_MESSAGE) {
+-    printer->Print(variables_,
+-      "DO_(::google::protobuf::internal::WireFormatLite::ReadMessageNoVirtual(\n"
+-      "     input, mutable_$name$()));\n");
++    if (descriptor_->options().lazy())
++    {
++        printer->Print(variables_, 
++            "DO_(::google::protobuf::internal::WireFormatLite::ReadBytes(input, &$name$_content_));\n"
++            "set_has_$name$();\n");
++    }
++    else
++    {
++        printer->Print(variables_,
++            "DO_(::google::protobuf::internal::WireFormatLite::ReadMessageNoVirtual(\n"
++            "     input, mutable_$name$()));\n");
++    }
+   } else {
+     printer->Print(variables_,
+       "DO_(::google::protobuf::internal::WireFormatLite::ReadGroupNoVirtual(\n"
+@@ -164,27 +271,82 @@
+ 
+ void MessageFieldGenerator::
+ GenerateSerializeWithCachedSizes(io::Printer* printer) const {
+-  printer->Print(variables_,
+-    "::google::protobuf::internal::WireFormatLite::Write$stream_writer$(\n"
+-    "  $number$, this->$name$(), output);\n");
++    if (descriptor_->options().lazy())
++    {
++		printer->Indent();
++        printer->Print(variables_,
++            "if (!is_$name$_parsed()){\n"
++            "  ::google::protobuf::internal::WireFormatLite::WriteBytes(\n"
++            "    $number$, $name$_content_, output);\n"
++            "}\n"
++            "else{\n"
++            "::google::protobuf::internal::WireFormatLite::Write$stream_writer$(\n"
++            "  $number$, this->$name$(), output);\n"
++            "}\n");
++        printer->Outdent();
++    }
++    else
++    {
++        printer->Print(variables_,
++            "::google::protobuf::internal::WireFormatLite::Write$stream_writer$(\n"
++            "  $number$, this->$name$(), output);\n");
++    }
+ }
+ 
+ void MessageFieldGenerator::
+ GenerateSerializeWithCachedSizesToArray(io::Printer* printer) const {
+-  printer->Print(variables_,
+-    "target = ::google::protobuf::internal::WireFormatLite::\n"
+-    "  Write$declared_type$NoVirtualToArray(\n"
+-    "    $number$, this->$name$(), target);\n");
++    if (descriptor_->options().lazy())
++    {
++        printer->Indent();
++        printer->Print(variables_,
++            "if (!is_$name$_parsed()){\n"
++            "  target = ::google::protobuf::internal::WireFormatLite::WriteBytesToArray(\n"
++            "    $number$, $name$_content_, target);\n"
++            "}\n"
++            "else{\n"
++            "  target = ::google::protobuf::internal::WireFormatLite::\n"
++            "    Write$declared_type$NoVirtualToArray(\n"
++            "      $number$, this->$name$(), target);\n"
++            "}\n");
++        printer->Outdent();
++    }
++    else
++    {
++        printer->Print(variables_,
++            "target = ::google::protobuf::internal::WireFormatLite::\n"
++            "  Write$declared_type$NoVirtualToArray(\n"
++            "    $number$, this->$name$(), target);\n");
++    }
+ }
+ 
+ void MessageFieldGenerator::
+ GenerateByteSize(io::Printer* printer) const {
+-  printer->Print(variables_,
+-    "total_size += $tag_size$ +\n"
+-    "  ::google::protobuf::internal::WireFormatLite::$declared_type$SizeNoVirtual(\n"
+-    "    this->$name$());\n");
++    if (descriptor_->options().lazy())
++    {
++        printer->Indent();
++        printer->Print(variables_,
++            "if(!is_$name$_parsed()){\n"
++            "  total_size += $tag_size$ + \n"
++            "    ::google::protobuf::internal::WireFormatLite::BytesSize($name$_content_);\n"
++            "}\n"
++            "else{\n"
++            "total_size += $tag_size$ +\n"
++            "  ::google::protobuf::internal::WireFormatLite::$declared_type$SizeNoVirtual(\n"
++            "    this->$name$());\n"
++            "}\n");
++        printer->Outdent();
++    }
++    else
++    {
++        printer->Print(variables_,
++            "total_size += $tag_size$ +\n"
++            "  ::google::protobuf::internal::WireFormatLite::$declared_type$SizeNoVirtual(\n"
++            "    this->$name$());\n");
++    }
+ }
+ 
++//todo lazy()  for one of 
++
+ // ===================================================================
+ 
+ MessageOneofFieldGenerator::
