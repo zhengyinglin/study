@@ -1,0 +1,79 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<script src="http://libs.baidu.com/jquery/2.1.4/jquery.min.js"></script>
+<title>简单工具页面</title>
+</head>
+
+<body>
+
+<table>
+    <tr>
+        <td><h2>编译1：</h2></td>
+        <td><button id="build1">编译</button></td>
+    </tr>
+    <tr><td>&nbsp</td></tr>
+    <tr>
+        <td><h2>编译2：</h2></td>
+        <td><button id="build2">编译</button></td>
+    </tr>
+    <tr><td>&nbsp</td></tr>
+
+</table>
+
+
+
+<br/><br/>
+
+<h3>当前等待任务数量：{{ wait_num }}</h3>
+<h3>最近任务信息</h3>
+{% for item in items %}
+   <li>{{ item }}</a></li>
+{% end %}
+
+
+
+<script>
+    function process(desc, failed_desc, data) {
+        var answer = confirm(desc)
+        if(answer!=true) {
+             return 0
+        }
+        $.post("/add_task", data, function(response) {
+            console.log(response)
+            response = JSON.parse(response)
+            if(response.ret == 0) {
+                confirm(response.msg)
+            }
+            else{
+                alert(failed_desc + response.msg)
+            }
+        })
+    }
+
+    function build1() {
+        data = {
+            "cmd": "build",
+            "env": "dev",
+        }
+        process("确定编译dev",  "编译dev失败：", data)
+    }
+
+    function build2() {
+        data = {
+            "cmd": "build",
+            "env": "dev",
+        }
+        process("确定编译dev",  "编译dev失败：", data)
+    }
+
+    // Hook up the submit button to log to the console
+    document.getElementById("build1").addEventListener("click", build1)
+    document.getElementById("build2").addEventListener("click", build2)
+
+</script>
+</body>
+</html>
+
+
+
